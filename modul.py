@@ -10,7 +10,7 @@ from collections import defaultdict
 
 class DataFilterAndSelect:
     COLUMNS = ["Kode Testpit", "Grid", "Prospek", "Tanggal Sampling", "Total Kedalaman",
-               "Total Koli", "Pemilik Lahan", "Penggali", "Pengangkut"]
+               "Total Koli", "Pemilik Lahan", "Penggali", "Pengangkut", "Penimbun"]
            
     def __init__(self, source):
         if isinstance(source, pd.DataFrame):
@@ -38,6 +38,7 @@ class DataFilterAndSelect:
         
         self.cleanData = filtered_df
         return self.cleanData
+        print(self.cleanData)
 
 
 class ConfigurationInput:
@@ -191,9 +192,10 @@ class PaymentCount:
         self.df = self.df.apply(merge_row, axis=1)
         return self
 
-    def harga_timbunan_dan_kompensasi(self):
+    def harga_timbunan_dan_kompensasi_langsiran(self):
         self.df["Tarif Timbunan"] = self.df["Total Kedalaman"] * 12000
         self.df["Tarif Kompensasi"] = 90000
+        self.df["Tarif Langsiran"] = self.df["Penimbun"] * 1000 * self.df["Total Koli"]
         return self
 
     def harga_angkutan(self):
@@ -216,25 +218,38 @@ class PaymentCount:
         return self.df 
     
     def get_pivot_summary(self):
-        # Create your pivot table normally
+        # Create pivot table
         pivot_df = self.df.pivot_table(
-            index='Kode Testpit',
-            values=['Tarif Galian', 'Tarif Samplingan', 'Tarif Timbunan', 'Tarif Kompensasi', 'Tarif Angkutan'],
+            index=['Tanggal Sampling', 'Kode Testpit', 'Grid', 'Prospek', 'Penggali', 'Pemilik Lahan'],
+            values=['Tarif Galian', 'Tarif Samplingan', 'Tarif Timbunan',
+                    'Tarif Kompensasi', 'Tarif Angkutan', 'Tarif Langsiran'],
             aggfunc='sum',
             fill_value=0
-        )
+        ).reset_index()
         
-        # Select only numeric columns to sum
-        numeric_cols = pivot_df.select_dtypes(include='number').columns
-        
-        # Add Total column summing only numeric columns
-        pivot_df = pivot_df.assign(Total=pivot_df[numeric_cols].sum(axis=1))
-        
-        # Add Total row summing all numeric columns (including Total column itself)
-        total_row = pivot_df[numeric_cols].sum(axis=0)
-        total_row['Total'] = total_row.sum()
-        pivot_df.loc['Total'] = total_row
-        
+            
+        # Select numeric columns as a list
+        numeric_cols = list(pivot_df.select_dtypes(include='number').columns)
+    
+        # Add Total column (row-wise sum)
+        pivot_df['Total'] = pivot_df[numeric_cols].sum(axis=1)
+    
+        # Create total row
+        total_values = pivot_df[numeric_cols + ['Total']].sum(axis=0)
+        total_row = {col: total_values.get(col, None) for col in pivot_df.columns}
+    
+        # Fill non-numeric columns with "Total"
+        for col in pivot_df.columns:
+            if col not in numeric_cols and col != 'Total':
+                total_row[col] = 'Total'
+                
+        for col in pivot_df.columns:
+            if col not in numeric_cols + ['Total']:
+                pivot_df[col] = pivot_df[col].astype(str)
+    
+        # Append as a new row (numeric index stays clean)
+        pivot_df = pd.concat([pivot_df, pd.DataFrame([total_row])], ignore_index=True)
+    
         return pivot_df
 
 class MultiPaymentExcel:
@@ -316,7 +331,15 @@ class MultiPaymentExcel:
                 "headers": ["No", "Tgl. Selesai", "Kode Tespit", "Grid", "Pemilik Lahan", "Harga Angkutan", "TTD"],
                 "harga_col": 7,
                 "subtotal": False,
+            },
+            "langsiran": {
+                "title": "PEMBAYARAN LANGSIRAN SAMPEL",
+                "uraian": "Untuk Pembayaran Langsiran Sampel sbb :",
+                "headers": ["No", "Tgl. Selesai", "Kode Tespit", "Grid", "Pemilik Lahan", "Harga Langsiran", "TTD"],
+                "harga_col": 7,
+                "subtotal": False,
             }
+            
         }
 
         config = mode_config[self.mode]
@@ -513,7 +536,15 @@ class PaymentExcelBuilder:
                 "columns": ["Prospek", "Tanggal Sampling", "Kode Testpit", "Grid", "Pemilik Lahan", "Tarif Angkutan"],
                 "rename": {"Tarif Angkutan": "harga"},
                 "values": ["Tanggal Sampling", "Kode Testpit", "Grid", "Pemilik Lahan", "harga"]
+            },
+            {   "sheet": "Langsiran",
+                "mode": "langsiran",
+                "group_col": "Prospek",
+                "columns": ["Prospek", "Tanggal Sampling", "Kode Testpit", "Grid", "Pemilik Lahan", "Tarif Langsiran"],
+                "rename": {"Tarif Langsiran": "harga"},
+                "values": ["Tanggal Sampling", "Kode Testpit", "Grid", "Pemilik Lahan", "harga"]
             }
+            
         ]
 
         for config in configs:

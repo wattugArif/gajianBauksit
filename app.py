@@ -156,7 +156,7 @@ def main():
                     .set_data(st.session_state["merged_stage3"])
                     .harga_galian()
                     .harga_samplingan()
-                    .harga_timbunan_dan_kompensasi()
+                    .harga_timbunan_dan_kompensasi_langsiran()
                     .harga_angkutan()
                     .get_result()
                 )
