@@ -32,13 +32,12 @@ class DataFilterAndSelect:
         self.cleanData = None
         
     def filter_and_select(self):
-        filtered_df = self.df.loc[self.df["Contoh"].isin(["A", ""]), self.COLUMNS].copy()
+        filtered_df = self.df.loc[self.df["Total Kedalaman"].notna(), self.COLUMNS].copy()
         if filtered_df.empty:
             raise ValueError("Kolom Contoh Error")
         
         self.cleanData = filtered_df
         return self.cleanData
-        print(self.cleanData)
 
 
 class ConfigurationInput:
